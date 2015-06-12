@@ -1,0 +1,383 @@
+%
+% performs ROI x Surface Node correlations of:
+%     + bold covariance
+%     + volume covariance (normalized by brain mask)
+%     + gray intensity covariance
+%
+% these are saved in a roi x surface x subject 3d stack of graphs
+%     + g_func
+%     + g_volu
+%     + g_gray
+%
+% req MATLAB 2014
+addpath(genpath('/home/jdv/code/analysis-scripts/projects/cere-conn/'))
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Options
+civet_format = 1;   % if this = 1, use civet surfaces,
+                    %        else, use freesurfer surfaces.
+% low-pass options
+tr_s = 0.7;         % length of TR in secs
+tr_n = 1200;        % number of TRs per run
+filt_lo_hz = 0.009; % in Hz
+filt_hi_hz = 0.08;  % in Hz
+filt_order = 100;   %
+
+tested_runs = [1, 2, 3, 4]; % can use a subset of runs (for split half?)
+
+update_func = 0; % if 1, overwrite outputs from previous run (or generate them)
+update_volu = 1; % if 1, overwrite outputs from previous run (or generate them)
+update_grey = 0; % if 1, overwrite outputs from previous run (or generate them)
+
+labels = {...
+ 'Vermal I II', 'L III', 'L IV', 'L V', 'L VI', 'L Crus I', 'L Crus II', ...
+ 'L VIIB', 'L VIIIA', 'L VIIIB', 'L IX', 'L X', 'L CM', 'Vermal III', ...
+ 'Vermal IV', 'Vermal V', 'Vermal VI', 'Vermal VIIA', 'Vermal VIIB', ...
+ 'Vermal VIIIA', 'Vermal VIIIB', 'Vermal IX', 'Vermal X', 'R III', 'R IV', ...
+ 'R V', 'R VI', 'R Crus I', 'R Crus II', 'R VIIB', 'R VIIIA', 'R VIIIB', ...
+ 'R IX', 'R X', 'R CM'...
+ };
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Initialize
+d = dir(pwd); % get the subject folders
+idx_subj = [d(:).isdir];
+subj = {d(idx_subj).name};
+subj(ismember(subj, {'.', '..'})) = [];
+nrun = length(tested_runs);
+nsub = length(subj);
+
+% determine number of ROIs in subcortical mask
+sub_mask = load_nii([subj{1} '/proc/smoothmask.nii.gz']);
+dims = size(sub_mask.img);
+sub_mask = reshape(sub_mask.img, [dims(1)*dims(2)*dims(3), 1]);
+vol_list = unique(sub_mask(sub_mask > 0));
+
+if civet_format == 1;
+    outputname = 'CV'; % civet
+    n_vertex = 40962;  %
+    f_type = 'civ';    %
+else;
+    outputname = 'FS'; % freesurfer
+    n_vertex = 32492;  % 
+    f_type = 'fs';     %
+end
+
+if update_func == 1;
+    g_func = zeros(35, n_vertex*2, nsub*nrun);
+    ctx_vals = zeros(1, n_vertex*2);
+end
+
+if update_volu == 1;
+    g_volu = zeros(35, n_vertex*2);
+    ctx_volu = zeros(1, n_vertex*2);
+    sub_volu = zeros(1, length(vol_list));
+end
+
+if update_grey == 1;
+    g_gray = zeros(35, n_vertex*2);
+    ctx_grey = zeros(1, n_vertex*2);
+    sub_grey = zeros(1, length(vol_list));
+end
+
+% bandpass filter
+nyquist = 1/tr_s/2;
+filt_hi_ratio = filt_hi_hz / nyquist;
+filt_lo_ratio = filt_lo_hz / nyquist;
+
+filt = fir1(filt_order, [filt_lo_ratio, filt_hi_ratio], ...
+                                   kaiser(filt_order+1, 2.5));
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Harvest
+% load in regressors of no interest
+age_anat = dlmread('demo-age.csv');
+hnd_anat = dlmread('demo-hand.csv');
+sex_anat = dlmread('demo-gender.csv');
+
+% expand regressors to match the number of runs for functional data
+age_func = zeros(nrun*nsub, 1);
+hnd_func = zeros(nrun*nsub, 1);
+sex_func = zeros(nrun*nsub, 1);
+
+count = 0;
+for x = 1:nsub;
+    age_func(count*nrun+1:count*nrun+nrun) = repmat(age_anat(x), nrun, 1);
+    hnd_func(count*nrun+1:count*nrun+nrun) = repmat(hnd_anat(x), nrun, 1);
+    sex_func(count*nrun+1:count*nrun+nrun) = repmat(sex_anat(x), nrun, 1);
+    count = count + 1;
+end
+
+runcount = 1; % initialize for g_func (g_volu + g_grey use s).
+for s = 1:nsub;
+
+    f = subj{s};
+
+    %% functional data
+    if update_func == 1;
+        for runs = tested_runs;
+
+            f = subj{s};
+
+            % subcortical
+            %sub_func = load_nii([f '/proc/func_cwm_regress.' r '.nii.gz']);
+            sub_func = load_nii([f '/proc/func_warped.' r '.nii.gz']);
+            sub_mask = load_nii([f '/proc/smoothmask.nii.gz']);
+            sub_wm = load_nii([f '/proc/anat_pve_classify_resample.nii.gz']);
+
+            % convert to voxels by timepoints
+            dims = size(sub_func.img);
+            sub_func = reshape(sub_func.img, [dims(1)*dims(2)*dims(3),dims(4)]);
+            sub_mask = reshape(sub_mask.img, [dims(1)*dims(2)*dims(3), 1]);
+            sub_wm = reshape(sub_wm.img, [dims(1)*dims(2)*dims(3), 1]);
+
+            % extract labeled data, minus the white matter
+            idx_final = find_grey_in_roi(sub_mask, sub_wm);
+
+            vol_list = unique(sub_mask(sub_mask > 0));
+
+            sub_tmp_func = sub_func(idx_final, :);
+            sub_mask = sub_mask(idx_final);
+            
+            % filter data
+            sub_tmp_func = double(sub_tmp_func);
+            sub_tmp_func = filtfilt(filt, 1, sub_tmp_func')';
+
+            % generate the output data matrix
+            sub_func = zeros(dims(4), length(vol_list));
+
+            % loop through ROIs in volume, take mean timeseries
+            roicount = 1;
+            for roi = vol_list';
+                idx_roi = find(sub_mask == roi);
+                sub_func(:, roicount) = mean(sub_tmp_func(idx_roi, :), 1);
+                roicount = roicount + 1;
+            end
+
+            clearvars sub_tmp_func
+
+            % surface data
+            ctx_tmp_funcL = dlmread(...
+                        [f '/proc/func_surface_' f_type '.L.' r '.1D.dset'], ...
+                                                  ' ', [5,2, n_vertex+4, 1201]);
+            ctx_tmp_funcR = dlmread(...
+                        [f '/proc/func_surface_' f_type '.R.' r '.1D.dset'], ...
+                                                  ' ', [5,2, n_vertex+4, 1201]);
+
+            % surface atlas
+            fname = fopen([f '/proc/atlas_' f_type '.L.1D'],'rt');
+            fdata = textscan(fname, '%f%f%f%f%f%f%f', ...
+                                    'Whitespace', ' ', ...
+                                    'MultipleDelimsAsOne', 1, ...
+                                    'HeaderLines', 5);
+            ctx_tmp_valsL = fdata{7};
+            fclose(fname);
+
+            fname = fopen([f '/proc/atlas_' f_type '.R.1D'],'rt');
+            fdata = textscan(fname, '%f%f%f%f%f%f%f', ...
+                                    'Whitespace', ' ', ...
+                                    'MultipleDelimsAsOne', 1, ...
+                                    'HeaderLines', 5);
+            ctx_tmp_valsR = fdata{7};
+            fclose(fname);
+            
+
+            % stack L&R hemisphere
+            ctx_func = [ctx_tmp_funcL; ctx_tmp_funcR];
+            ctx_tmp_vals = [ctx_tmp_valsL; ctx_tmp_valsR];
+
+            % filter functional data
+            ctx_func = filtfilt(filt, 1, ctx_func')';
+
+            % load z-scored correlation matrix into cmat
+            c = corr(sub_func, ctx_func');
+            c = 0.5 * log( (1+c) ./ (1-c) );
+            g_func(:, :, runcount) = c;
+            runcount = runcount + 1;
+     
+        end
+
+        ctx_vals = [ctx_vals; ctx_tmp_vals']; % append
+    end
+
+    %% structural data
+    % mask = labels, grey = t1, icvm = intercranial volume, wm = civet wm
+    sub_mask = load_nii([f '/labels/cerebellum.nii.gz']);
+    sub_anat = load_nii([f '/T1w/T1w_acpc_dc_restore_brain.nii.gz']);
+    sub_icvm = load_nii([f '/T1w/brainmask_fs.nii.gz']);
+    sub_wm = load_nii([f '/proc/anat_pve_classify.nii.gz']);
+
+    % convert to 2D array
+    dims = size(sub_mask.img);
+    sub_mask = reshape(sub_mask.img, [dims(1)*dims(2)*dims(3), 1]);
+    sub_anat = reshape(sub_anat.img, [dims(1)*dims(2)*dims(3), 1]);
+    sub_icvm = reshape(sub_icvm.img, [dims(1)*dims(2)*dims(3), 1]);
+    sub_wm = reshape(sub_wm.img, [dims(1)*dims(2)*dims(3), 1]);
+
+    % calculate mean t1 value, icvm
+    idx_brain = find(sub_icvm > 0);
+    t1_mean = mean(sub_anat(idx_brain));
+    sub_icvm = sum(sub_icvm);
+
+    % extract labeled data, minus the white matter
+    idx_final = find_grey_in_roi(sub_mask, sub_wm);
+
+    sub_tmp_mask = sub_mask(idx_final);
+    sub_tmp_anat = sub_anat(idx_final);
+    sub_rois = unique(sub_tmp_mask);
+
+    % record roi volume normalized by icvm
+    if update_volu == 1;
+        sub_tmp_volu = zeros(1, length(vol_list));
+        
+        count = 1;
+        for roi = vol_list';
+            roi_vol = length(find(sub_tmp_mask == roi)) / sub_icvm;
+            sub_tmp_volu(count) = roi_vol;
+
+            count = count + 1;
+        end
+        % using thickness values in standard space (rsl == mni space) 
+        % ctx_tmp_voluL = dlmread([f '/civet/thickness/HCP_' f ...
+        %                         '_native_rms_tlink_28.2843mm_left.txt']);
+        % ctx_tmp_voluR = dlmread([f '/civet/thickness/HCP_' f ...
+        %                         '_native_rms_tlink_28.2843mm_right.txt']);
+
+        % using volumes instead (only option in MNI space..?)        
+        ctx_tmp_voluL = dlmread([f '/civet/surfaces/HCP_' f ...
+                                '_surface_rsl_left_native_volume_56.5685mm.txt']);
+
+        ctx_tmp_voluR = dlmread([f '/civet/surfaces/HCP_' f ...
+                                '_surface_rsl_right_native_volume_56.5685mm.txt']);
+
+        ctx_tmp_volu = [ctx_tmp_voluL; ctx_tmp_voluR];
+        clearvars ctx_tmp_voluL ctx_tmp_voluR
+
+        sub_volu = [sub_volu; sub_tmp_volu];  % append
+        ctx_volu = [ctx_volu; ctx_tmp_volu']; % append
+    end
+
+    % record roi intensity normalized by global mean
+    if update_grey == 1;
+        sub_tmp_grey = zeros(1, length(vol_list));
+        
+        count = 1;
+        for roi = vol_list';
+            roi_grey = mean(sub_tmp_anat(find(sub_tmp_mask == roi))) / t1_mean;
+            sub_tmp_grey(count) = roi_grey;
+        
+            count = count + 1;
+        end
+        ctx_tmp_greyL = dlmread(...
+                     [f '/proc/anat_surface_' f_type '.L.1D.dset'], ...
+                                                   ' ', [5,2, n_vertex+4, 2]);
+        ctx_tmp_greyR = dlmread(...
+                     [f '/proc/anat_surface_' f_type '.R.1D.dset'], ...
+                                                   ' ', [5,2, n_vertex+4, 2]);
+        ctx_tmp_grey = [ctx_tmp_greyL; ctx_tmp_greyR];
+        sub_grey = [sub_grey; sub_tmp_grey];  % append
+        ctx_grey = [ctx_grey; ctx_tmp_grey']; % append
+    end
+
+    % keep track of good nodes & number of subjects, checkpoint
+    disp(['subject ' int2str(s) ' done'])
+
+    % if rem(s, 20) == 0;
+    %     save(['cere-conn_func-volu-grey_vertex_' outputname '.mat'], '-v7.3');
+    % end
+
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Wrap up (strip zeros from experiment-wide arrays, clear memory, save)
+if update_volu == 1;
+    sub_volu = sub_volu(2:end, :);
+    ctx_volu = ctx_volu(2:end, :);
+end
+
+if update_grey == 1;
+    sub_grey = sub_grey(2:end, :);
+    ctx_grey = ctx_grey(2:end, :);
+end
+
+if update_func == 1;
+    ctx_vals = ctx_vals(2:end, :);
+end
+
+disp(['Data collection done.'])
+
+% clear junk from memory
+clearvars ans c ctx_func ctx_tmp* d filt* idx_*
+clearvars sub_anat sub_func sub_mask sub_tmp_*
+clearvars civet_format count f* r* s subj_* t1_mean tr_* wm_val
+
+% checkpoint
+save(['cere-conn_func-volu-grey_vertex_' outputname '.mat'], '-v7.3');
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% regress out uninteresting variables against the corr vectors / struct features
+matlabpool open 8
+
+if update_func == 1;
+    g_func_mean = repmat(nanmean(g_func, 3), [1, 1, nrun*nsub]);
+    for x = 1:length(g_func(:, 1, 1));
+        parfor y = 1:length(g_func(1, :, 1));
+            mdl = fitlm([age_func, hnd_func, sex_func], ...
+                               meshgrid(g_func(x,y,:), 1));
+            g_func(x, y, :) = mdl.Residuals.Raw;
+        end
+    end
+    g_func = g_func + g_func_mean;
+    clearvars g_func_mean
+end
+
+if update_grey == 1;
+    parfor roi = 1:length(sub_grey(1, :));
+        mdl = fitlm([age_anat, hnd_anat, sex_anat], sub_grey(:, roi));
+        sub_grey(:, roi) = mdl.Residuals.Raw;
+    end
+
+    parfor roi = 1:length(ctx_grey(1, :));
+        mdl = fitlm([age_anat, hnd_anat, sex_anat], ctx_grey(:, roi));
+        ctx_grey(:, roi) = mdl.Residuals.Raw;
+    end
+end
+
+if update_volu == 1;
+    parfor roi = 1:length(sub_volu(1, :));
+        mdl = fitlm([age_anat, hnd_anat, sex_anat], sub_volu(:, roi));
+        sub_volu(:, roi) = mdl.Residuals.Raw;
+    end
+
+    parfor roi = 1:length(ctx_volu(1, :));
+        mdl = fitlm([age_anat, hnd_anat, sex_anat], ctx_volu(:, roi));
+        ctx_volu(:, roi) = mdl.Residuals.Raw;
+    end
+end
+matlabpool close
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%convert z --> t --> p values (using number of runs), calculate fdr mask
+if update_grey == 1;
+    g_grey = corr(sub_grey, ctx_grey);
+    t_grey = g_grey ./ sqrt((1-g_grey.^2) ./ (nsub-2));
+    p_grey = 2 * tcdf(-abs(t_grey), (nsub)-2);
+    [m_grey_pp, m_grey_pn] = fdr_mask(p_grey);
+end
+
+if update_volu == 1;
+    g_volu = corr(sub_volu, ctx_volu);
+    t_volu = g_volu ./ sqrt((1-g_volu.^2) ./ (nsub-2));
+    p_volu = 2 * tcdf(-abs(t_volu), (nsub)-2);
+    [m_volu_pp, m_volu_pn] = fdr_mask(p_volu);
+end
+
+if update_func == 1;
+    z_func = nanmean(g_func, 3);
+    r_func = (exp(2*z_func) - 1) ./ (exp(2*z_func) + 1);
+    t_func = r_func ./ sqrt((1-r_func.^2) ./ (nsub*nrun-2));
+    p_func = 2 * tcdf(-abs(t_func), (nsub*nrun)-2);
+    [m_func_pp, m_func_pn] = fdr_mask(p_func);
+end
+
+% checkpoint
+save(['cere-conn_func-volu-grey_vertex_' outputname '_proc.mat'], '-v7.3');
