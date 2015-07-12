@@ -143,8 +143,8 @@ ctx_merged_thck_sub = compute_network_maturation_corrs(sub_thck, ctx_thck, parti
 [func_volu_net_rs, func_volu_net_ps] = value_compare(ctx_merged_func_sub', ctx_merged_volu_sub', 0.05, 1);
 [func_thck_net_rs, func_thck_net_ps] = value_compare(ctx_merged_func_sub', ctx_merged_thck_sub', 0.05, 1);
 
-[func_volu_net_rs_sparse, func_volu_net_ps_sparse] = value_compare(ctx_merged_func_sub', ctx_merged_volu_sub', [], 0.2);
-[func_thck_net_rs_sparse, func_thck_net_ps_sparse] = value_compare(ctx_merged_func_sub', ctx_merged_thck_sub', [], 0.2);
+[func_volu_net_rs_sparse, func_volu_net_ps_sparse] = value_compare(ctx_merged_func_sub', ctx_merged_volu_sub', [], 0.1);
+[func_thck_net_rs_sparse, func_thck_net_ps_sparse] = value_compare(ctx_merged_func_sub', ctx_merged_thck_sub', [], 0.1);
 
 figure; % func-struct-net.fig
 bar(func_volu_net_rs, 'FaceColor', [0 0 0], 'EdgeColor', [0 0 0]); 
@@ -154,7 +154,13 @@ set(gca, 'xtick', [1:7]);
 set(gca, 'xticklabel', {'VI/VIIB', 'VIIIA/B', 'III/IV', 'V', 'Crus I/II', 'IX', 'X/CM'});
 xlim([0.5 7.5])
 
-
+figure; % func-struct-net-sparse.fig
+bar(func_volu_net_rs_sparse, 'FaceColor', [0 0 0], 'EdgeColor', [0 0 0]); 
+hold all; 
+bar(func_thck_net_rs_sparse, 'FaceColor', [0.7 0.7 0.7], 'EdgeColor', [0.7 0.7 0.7]);
+set(gca, 'xtick', [1:7]);
+set(gca, 'xticklabel', {'VI/VIIB', 'VIIIA/B', 'III/IV', 'V', 'Crus I/II', 'IX', 'X/CM'});
+xlim([0.5 7.5])
 
 % create cross network diagram
 x = length(unique(partitions_func_ctx(partitions_func_ctx > 0)));
