@@ -7,14 +7,14 @@
 % tr_s = 0.7;
 % tr_n = 1200;
 % filt_lo_hz = 0.009;
-% filt_hi_hz = 0.08; 
+% filt_hi_hz = 0.08;
 % filt_order = 100;
 % tested_runs = [1, 2, 3, 4];
 % update_func = 1;
-% update_volu = 1; 
-% update_grey = 1; 
-% use_ctx_mask = 1; 
-% use_filter = 1; 
+% update_volu = 1;
+% update_grey = 1;
+% use_ctx_mask = 1;
+% use_filter = 1;
 
 addpath(genpath('/home/jdv/code/cerebellum-2015/'))
 %inname = 'compcor-1000-dil_nopass_func-volu-grey_vertex_CV_proc.mat';
@@ -42,6 +42,14 @@ subplot(2,3,4); [H, T, perm] = dendrogram_plot(r_func, labels, [], 0.5, 0);
 subplot(2,3,5); dendrogram_plot(g_volu, labels, perm, 0.5, 0);
 subplot(2,3,6); dendrogram_plot(g_thck, labels, perm, 0.5, 0);
 
+% correlation of second-order and first order subcortical matrix
+dims = size(g_func_sub);
+a = reshape(g_func_sub, dims(1)*dims(1), 1);
+b = reshape(g_func_sub_2ndord, dims(1)*dims(1), 1);
+matrix_similarity = corr(a,b); % 0.5265
+idx = find(b > 0);
+matrix_similarity_pos = cor(a(idx), b(idx)); % 0.5785
+
 % Q2 Structrure function at ROI level
 [func_volu_ctx_rs, func_volu_ctx_ps] = value_compare(g_func_ctx, g_volu_ctx, [], 1);
 [func_thck_ctx_rs, func_thck_ctx_ps] = value_compare(g_func_ctx, g_thck_ctx, [], 1);
@@ -57,22 +65,22 @@ subplot(2,3,6); dendrogram_plot(g_thck, labels, perm, 0.5, 0);
 
 figure; % func-struct-roi.fig
 subplot(2,2,1:2)
-bar(func_volu_rs, 'FaceColor', [0 0 0], 'EdgeColor', [0 0 0]); 
-hold all; 
+bar(func_volu_rs, 'FaceColor', [0 0 0], 'EdgeColor', [0 0 0]);
+hold all;
 bar(func_thck_rs, 'FaceColor', [0.7 0.7 0.7], 'EdgeColor', [0.7 0.7 0.7]);
 set(gca, 'xtick', [1:35]);
 set(gca, 'xticklabel', labels);
 xlim([0.5 35.5])
 
 subplot(2,2,3)
-xbins = 0:0.025:0.5;
+xbins = -0.7:0.1:0.7;
 [nb,xb]=hist(func_volu_ctx_rs, xbins); bh=bar(xb,nb, 1); set(bh,'facecolor',[0 0 0]);
 hold all
 [nb,xb]=hist(func_thck_ctx_rs, xbins); bh=bar(xb,nb, 1); set(bh,'facecolor',[0.7 0.7 0.7], 'edgecolor', [0.7 0.7 0.7]);
 legend({'volume', 'thickness'})
 
 subplot(2,2,4)
-xbins = 0:0.005:0.1;
+xbins = -0.7:0.1:0.7;
 [nb,xb]=hist(func_volu_rs, xbins); bh=bar(xb,nb, 1); set(bh,'facecolor',[0 0 0]);
 hold all
 [nb,xb]=hist(func_thck_rs, xbins); bh=bar(xb,nb, 1); set(bh,'facecolor',[0.7 0.7 0.7], 'edgecolor', [0.7 0.7 0.7]);
@@ -120,15 +128,21 @@ figure; plot_cluster_diagnostics_dual(inst_func_ctx, inst_func_sub, q_func_ctx, 
 
 print_cluster_rois(sub_rois, partitions_func_sub, labels)
 
-% get the average correlation for each network, and find the top 10% of links.
+% get the avg r for each network, significant rs, and find the top 10% of links.
 ctx_merged_func_sub = merge_by_cluster(r_func, partitions_func_sub);
 ctx_merged_func_sub_sparse = zeros(size(ctx_merged_func_sub));
+ctx_merged_func_sub_sigfdr = zeros(size(ctx_merged_func_sub));
 count = 1;
 for v = ctx_merged_func_sub';
     v = sparsify(v, 0.1);
     ctx_merged_func_sub_sparse(count, :) = v;
     count = count + 1;
 end
+% 300 df -- number of runs per ROI r value...
+ctx_merged_func_sub_sig = t_2_p(r_2_t(ctx_merged_func_sub, 300), 300);
+sigidx = find(ctx_merged_func_sub_sig <= fdr_1995(ctx_merged_func_sub_sig, 0.05));
+ctx_merged_func_sub_sigfdr(sigidx) = ctx_merged_func_sub_sig(sigidx);
+clearvars ctx_merged_func_sub_sig sigidx
 
 % print out the data
 idx_to_nifti('100307/T1w/parcellation_1000-dil.nii.gz', partitions_func_ctx, ctx_rois, 'ctx-networks-cluster.nii.gz');
@@ -147,16 +161,16 @@ ctx_merged_thck_sub = compute_network_maturation_corrs(sub_thck, ctx_thck, parti
 [func_thck_net_rs_sparse, func_thck_net_ps_sparse] = value_compare(ctx_merged_func_sub', ctx_merged_thck_sub', [], 0.1);
 
 figure; % func-struct-net.fig
-bar(func_volu_net_rs, 'FaceColor', [0 0 0], 'EdgeColor', [0 0 0]); 
-hold all; 
+bar(func_volu_net_rs, 'FaceColor', [0 0 0], 'EdgeColor', [0 0 0]);
+hold all;
 bar(func_thck_net_rs, 'FaceColor', [0.7 0.7 0.7], 'EdgeColor', [0.7 0.7 0.7]);
 set(gca, 'xtick', [1:7]);
 set(gca, 'xticklabel', {'VI/VIIB', 'VIIIA/B', 'III/IV', 'V', 'Crus I/II', 'IX', 'X/CM'});
 xlim([0.5 7.5])
 
 figure; % func-struct-net-sparse.fig
-bar(func_volu_net_rs_sparse, 'FaceColor', [0 0 0], 'EdgeColor', [0 0 0]); 
-hold all; 
+bar(func_volu_net_rs_sparse, 'FaceColor', [0 0 0], 'EdgeColor', [0 0 0]);
+hold all;
 bar(func_thck_net_rs_sparse, 'FaceColor', [0.7 0.7 0.7], 'EdgeColor', [0.7 0.7 0.7]);
 set(gca, 'xtick', [1:7]);
 set(gca, 'xticklabel', {'VI/VIIB', 'VIIIA/B', 'III/IV', 'V', 'Crus I/II', 'IX', 'X/CM'});
@@ -195,5 +209,5 @@ dlmwrite('cross-network-model.csv', cross_network, ',');
 
 
 %save(outname, '-v7.3')
-% eva marder -- carb connectivity 
+% eva marder -- carb connectivity
 % marcus richel

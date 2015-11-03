@@ -1,13 +1,13 @@
 function [rs, ps] = value_compare(a, b, q, sparsity);
-    % regresses the columns of A onto B, outputs the r^2 for each column.
+    % correlates the columns of A onto B, outputs the r for each column.
 
     % if sparsity is less than 1, that % of the strongest values will be found
     % in a and used to compare with b.
 
     dims = size(a);
     rs = zeros(dims(2), 1);
-    ps = zeros(dims(2), 1);    
-    
+    ps = zeros(dims(2), 1);
+
     for col = 1:dims(2);
         x = a(:, col);
         y = b(:, col);
@@ -30,7 +30,7 @@ function [rs, ps] = value_compare(a, b, q, sparsity);
         % %t = sqrt((length(x)-2) * rsq) / sqrt(1 - rsq);
         % p = 1-tcdf(abs(t), df);
 
-        rs(col) = r^2;
+        rs(col) = r;
         ps(col) = p;
     end
 
