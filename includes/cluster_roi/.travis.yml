@@ -1,0 +1,9 @@
+# blacklist
+branches:
+  except:
+    - master
+
+# whitelist
+branches:
+  only:
+    - gh-pages

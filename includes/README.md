@@ -1,14 +1,20 @@
+**cluster_roi**
+
+https://github.com/ccraddock/cluster_roi
+by Cameron Craddock
+Mar 17, 2014
+
 **hungarian.m**
 
 http://www.mathworks.com/matlabcentral/fileexchange/11609-hungarian-algorithm
 by Alexander Melin
-30 Jun 2006 (Updated 08 Aug 2006) 
+30 Jun 2006 (Updated 08 Aug 2006)
 
 **redblue.m**
 
 http://www.mathworks.com/matlabcentral/fileexchange/25536-red-blue-colormap
 by Adam Auton
-09 Oct 2009 
+09 Oct 2009
 
 **fdr_1995.m**
 
@@ -51,11 +57,11 @@ by Kaijun Wang
 http://users.auth.gr/~kehagiat/Software/ComDetTBv091.zip
 from http://www.mathworks.com/matlabcentral/fileexchange/45867-community-detection-toolbox
 by Athanasios Kehagias
-12 Mar 2014 (Updated 13 Mar 2014) 
- 
+12 Mar 2014 (Updated 13 Mar 2014)
 
  **mapequation-infomap-83e5d76683f4**
 
 https://bitbucket.org/mapequation/infomap
 http://www.mapequation.org/code.html#Link-list-format
 Downloaded 27 May 2015
+
