@@ -30,7 +30,7 @@ for iii=1:length(fdata)-1;
 end
 for ii=1:maxNRows,  %% 1 -> 324912 rows
     for i=1:length(fdata), %% 1 -> 7 columns
-        try 
+        try
             %if iscell(fdata{i}),
             %    fprintf(fout,'%s ',cell2mat(fdata{i}(ii)));
             %else
@@ -78,7 +78,7 @@ for iii=1:length(fdata)-1;
 end
 for ii=1:maxNRows,  %% 1 -> 324912 rows
     for i=1:length(fdata), %% 1 -> 7 columns
-        try 
+        try
             %if iscell(fdata{i}),
             %    fprintf(fout,'%s ',cell2mat(fdata{i}(ii)));
             %else
@@ -133,7 +133,7 @@ fclose(fname);
 
 % % find the closest label set
 % idx = find(distances == min(distances));
-    
+
 % % if we get more than one minimum, take the first one.
 % if length(idx) > 1;
 %     idx = idx(1);
@@ -147,7 +147,7 @@ for ind = 1:4;
 	idxa = find(thresholded_l_func_reg == ind);
 	idxb = find(thresholded_l_struct_reg == ind);
 	idxc = intersect(idxa, idxb);
-    
+
     disp(length(idxc))
 
     thresholded_conjunction(idxc) = ind;

@@ -19,7 +19,7 @@
 addpath(genpath('/home/jdv/code/cerebellum'))
 %inname = 'compcor-1000-dil_nopass_func-volu-grey_vertex_CV_proc.mat';
 load('curr-ana-final-1000.mat');
-outname = 'curr-ana-final-1000_2017.mat';
+outname = 'curr-ana-final-1000_2018.mat';
 parpool
 
 g_volu_ctx = corr(ctx_volu);
