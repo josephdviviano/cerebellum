@@ -1,9 +1,11 @@
-function [rs, ps, sig] = permutation_test(a, b, iterations, cutoff)
+function [rs, ps, sig] = permutation_test(a, b, iterations)
     % does iterations permutations, randomizing a and b to determine the null
     % distributions of correlations between datasets. Finally, computes the
-    % actual correlation and uses percentile rank to determine significance.
-    % correlations computed between rows of a and b.
-    % all tests are two-tailed
+    % actual correlation and calculates the proportion of null trials that
+    % produced a stronger effect than the real data. correlations computed
+    % between rows of a and b. all tests are two-tailed (see abs() when
+    % computing p value)
+
     dims = size(a);
 
     rs = zeros(dims(1), 1);
@@ -12,6 +14,7 @@ function [rs, ps, sig] = permutation_test(a, b, iterations, cutoff)
 
     for row = 1:dims(1);
 
+        % null correlations
         null_rs = zeros(iterations,1);
 
         for iter = 1:iterations;
@@ -21,11 +24,11 @@ function [rs, ps, sig] = permutation_test(a, b, iterations, cutoff)
             null_rs(iter) = corr(a(row, idx_a)', b(row, idx_b)');
         end
 
-        % compute cutoffs, real correlations
-        null_rs = sort(null_rs);
-        %high_cutoff = prctile(null_rs, cutoff);
-        %low_cutoff = prctile(null_rs, 100-cutoff);
+        % true correlation
         r = corr(a(row, :)', b(row, :)');
+
+        % proportion of trials where true correlation is smaller in magnitude
+        % than the null correlations
         p = length(find(abs(r) <= abs(null_rs))) / iterations;
 
         % store values
@@ -42,3 +45,4 @@ function [rs, ps, sig] = permutation_test(a, b, iterations, cutoff)
     end
     sig(ps < cutoff) = 1;
 end
+
