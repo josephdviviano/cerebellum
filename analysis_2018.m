@@ -45,9 +45,9 @@ subplot(2,3,6); dendrogram_plot(g_thck, labels, perm, 0.5, 0);
 
 % Q2 Structrure function at ROI level
 n_iter = 10000;
-[func_volu_rs, func_volu_ps, func_volu_sig] = permutation_test(g_func, g_volu, n_iter, 97.5);
-[func_thck_rs, func_thck_ps, func_thck_sig] = permutation_test(g_func, g_thck, n_iter, 97.5);
-[volu_thck_rs, volu_thck_ps, volu_thck_sig] = permutation_test(g_volu, g_thck, n_iter, 97.5);
+[func_volu_rs, func_volu_ps, func_volu_sig] = permutation_test(g_func, g_volu, n_iter);
+[func_thck_rs, func_thck_ps, func_thck_sig] = permutation_test(g_func, g_thck, n_iter);
+[volu_thck_rs, volu_thck_ps, volu_thck_sig] = permutation_test(g_volu, g_thck, n_iter);
 
 figure; % func-struct-roi.fig
 subplot(3,1,1)
@@ -109,7 +109,7 @@ errorbar(inst_volu.mean, inst_volu.sd, 'linewidth', 2, 'color', 'blue');
 set(gca, 'xtick', [1:length(clst_sub)]);
 set(gca, 'xticklabel', clst_sub);
 ylim([0 1])
-legend('BOLD', 'volume-thickness', 'volume-volume')
+legend('BOLD correlations', 'Volume-thickness covariance', 'Volume-volume covariance')
 xlabel('instability')
 ylabel('number of clusters')
 
@@ -131,6 +131,8 @@ volu_Y = pdist(g_volu, dist_fxn);
 volu_Z = linkage(volu_Y, link_fxn);
 volu_C = cluster(volu_Z,'maxclust', n);
 
+
+% aligned to functional data
 mappings = match_labels(thck_C, func_C);
 thck_C_out = zeros(length(thck_C), 1);
 for x = 1:n;
@@ -148,26 +150,79 @@ end
 volu_C = volu_C_out;
 
 all_C = [func_C, thck_C, volu_C];
+squareform(pdist(all_C', 'hamming'))
+%ans =
+%
+%         0    0.4571    0.4571
+%    0.4571         0    0.7429
+%    0.4571    0.7429         0
+
+% aligned to volume-thickness data
+mappings = match_labels(volu_C, thck_C);
+volu_C_out = zeros(length(volu_C), 1);
+for x = 1:n;
+    idx = find(volu_C == x);
+    volu_C_out(idx) = mappings(x);
+end
+volu_C_to_thck = volu_C_out;
+
+mappings = match_labels(func_C, thck_C);
+func_C_out = zeros(length(volu_C), 1);
+for x = 1:n;
+    idx = find(func_C == x);
+    func_C_out(idx) = mappings(x);
+end
+func_C_to_thck = func_C_out;
+
+all_C = [func_C_to_thck, thck_C, volu_C_to_thck];
+squareform(pdist(all_C', 'hamming'))
+%ans =
+%
+%         0    0.4571    0.5429
+%    0.4571         0    0.2571
+%    0.5429    0.2571         0
+
+idx_to_nifti('100307/proc/smoothmask.01.nii.gz', func_C, [], 'cere_networks_func.nii.gz');
+idx_to_nifti('100307/proc/smoothmask.01.nii.gz', thck_C, [], 'cere_networks_thck.nii.gz');
+idx_to_nifti('100307/proc/smoothmask.01.nii.gz', volu_C, [], 'cere_networks_volu.nii.gz');
+idx_to_nifti('100307/proc/smoothmask.01.nii.gz', volu_C_to_thck, [], 'cere_networks_volu-to-thck.nii.gz');
+
+print_cluster_rois(sub_rois, func_C', labels)
+print_cluster_rois(sub_rois, thck_C', labels)
+print_cluster_rois(sub_rois, volu_C', labels)
 
 sparseness = 0.1;
 
+g_func_sparse = make_sparse(g_func, sparseness);
+g_volu_sparse = make_sparse(g_volu, sparseness);
+g_thck_sparse = make_sparse(g_thck, sparseness);
 
-ctx_merged_func = merge_by_cluster(g_func, func_C');
-ctx_merged_thck = merge_by_cluster(g_thck, thck_C');
-ctx_merged_volu = merge_by_cluster(g_volu, volu_C');
+% q: should I merge by individual cluster patterns, or by the func cluster patterns
+ctx_merged_func_func_clust = make_sparse(merge_by_cluster(g_func, func_C'), sparseness);
+ctx_merged_thck_thck_clust = make_sparse(merge_by_cluster(g_thck, thck_C'), sparseness);
+ctx_merged_volu_volu_clust = make_sparse(merge_by_cluster(g_volu, volu_C'), sparseness);
+ctx_merged_thck_func_clust = make_sparse(merge_by_cluster(g_thck, func_C'), sparseness);
+ctx_merged_volu_func_clust = make_sparse(merge_by_cluster(g_volu, func_C'), sparseness);
 
-ctx_merged_func_sparse = make_sparse(ctx_merged_func, sparseness);
-ctx_merged_thck_sparse = make_sparse(ctx_merged_thck, sparseness);
-ctx_merged_volu_sparse = make_sparse(ctx_merged_volu, sparseness);
+ctx_func_netlabels_func_clust = label_networks(ctx_merged_func_func_clust);
+ctx_thck_netlabels_thck_clust = label_networks(ctx_merged_thck_thck_clust);
+ctx_volu_netlabels_volu_clust = label_networks(ctx_merged_volu_volu_clust);
+ctx_thck_netlabels_func_clust = label_networks(ctx_merged_thck_func_clust);
+ctx_volu_netlabels_func_clust = label_networks(ctx_merged_volu_func_clust);
 
-print_out_data('100307/T1w/parcellation_1000-dil.nii.gz', ctx_merged_func, ctx_rois, 'ctx-mean-corrs-func-');
-print_out_data('100307/T1w/parcellation_1000-dil.nii.gz', ctx_merged_thck, ctx_rois, 'ctx-mean-corrs-thck-');
-print_out_data('100307/T1w/parcellation_1000-dil.nii.gz', ctx_merged_volu, ctx_rois, 'ctx-mean-corrs-volu-');
+%print_out_data('100307/T1w/parcellation_1000-dil.nii.gz', ctx_merged_func, ctx_rois, 'ctx-mean-corrs-func-');
+%print_out_data('100307/T1w/parcellation_1000-dil.nii.gz', ctx_merged_thck, ctx_rois, 'ctx-mean-corrs-thck-');
+%print_out_data('100307/T1w/parcellation_1000-dil.nii.gz', ctx_merged_volu, ctx_rois, 'ctx-mean-corrs-volu-');
 
-print_out_data('100307/T1w/parcellation_1000-dil.nii.gz', ctx_merged_func_sparse, ctx_rois, 'ctx-mean-corrs-func-sparse-');
-print_out_data('100307/T1w/parcellation_1000-dil.nii.gz', ctx_merged_thck_sparse, ctx_rois, 'ctx-mean-corrs-thck-sparse-');
-print_out_data('100307/T1w/parcellation_1000-dil.nii.gz', ctx_merged_volu_sparse, ctx_rois, 'ctx-mean-corrs-volu-sparse-');
+%print_out_data('100307/T1w/parcellation_1000-dil.nii.gz', ctx_merged_func_sparse, ctx_rois, 'ctx-mean-corrs-func-sparse-');
+%print_out_data('100307/T1w/parcellation_1000-dil.nii.gz', ctx_merged_thck_sparse, ctx_rois, 'ctx-mean-corrs-thck-sparse-');
+%print_out_data('100307/T1w/parcellation_1000-dil.nii.gz', ctx_merged_volu_sparse, ctx_rois, 'ctx-mean-corrs-volu-sparse-');
 
+print_out_data('100307/T1w/parcellation_1000-dil.nii.gz', ctx_func_netlabels_func_clust, ctx_rois, 'ctx_labels_func_func_clust_');
+print_out_data('100307/T1w/parcellation_1000-dil.nii.gz', ctx_thck_netlabels_thck_clust, ctx_rois, 'ctx_labels_thck_thck_clust_');
+print_out_data('100307/T1w/parcellation_1000-dil.nii.gz', ctx_volu_netlabels_volu_clust, ctx_rois, 'ctx_labels_volu_volu_clust_');
+print_out_data('100307/T1w/parcellation_1000-dil.nii.gz', ctx_thck_netlabels_func_clust, ctx_rois, 'ctx_labels_thck_func_clust_');
+print_out_data('100307/T1w/parcellation_1000-dil.nii.gz', ctx_volu_netlabels_func_clust, ctx_rois, 'ctx_labels_volu_func_clust_');
 
 %save(outname, '-v7.3')
 % eva marder -- carb connectivity
